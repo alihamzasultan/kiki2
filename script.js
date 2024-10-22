@@ -374,7 +374,7 @@ function blobToBase64(blob) {
 
 // Function to send the recorded audio to Google Cloud Speech-to-Text API
 async function sendAudioToGoogle(audioBase64) {
-    const apiKey = 'YOUR_GOOGLE_CLOUD_API_KEY';  // Replace with your actual API key
+    const apiKey = 'AIzaSyDXaNyDjTE3kbhEyR2KbeMJf7GYH2ka69U';  // Replace with your actual API key
     const url = `https://speech.googleapis.com/v1/speech:recognize?key=${apiKey}`;
 
     const requestPayload = {
