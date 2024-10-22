@@ -319,50 +319,91 @@ if ('webkitSpeechRecognition' in window) {
     };
 }
 
+let mediaRecorder;
+let audioChunks = [];
+
 async function toggleMic() {
     const listeningAnimation = document.getElementById('listening-animation');
+    const micButton = document.getElementById('micButton');
+    const resultDisplay = document.getElementById('transcription-result');
 
-    // Use webkitSpeechRecognition for iOS Safari
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        alert("Speech recognition not supported in this browser.");
-        return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;  // Adjust this based on your needs
-    recognition.interimResults = false;
-    
-    // Check and request microphone access (for iOS and macOS)
     try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+            const audioBase64 = await blobToBase64(audioBlob);
+
+            // Send audio to Google Cloud Speech-to-Text API
+            const result = await sendAudioToGoogle(audioBase64);
+            resultDisplay.textContent = result; // Show the transcription result
+        };
+
+        if (recognizing) {
+            mediaRecorder.stop(); // Stop recording
+            recognizing = false;
+            micButton.textContent = 'Start Listening';
+            listeningAnimation.style.display = 'none'; // Hide animation
+        } else {
+            mediaRecorder.start(); // Start recording
+            recognizing = true;
+            micButton.textContent = 'Stop Listening';
+            listeningAnimation.style.display = 'block'; // Show animation
+        }
+
     } catch (err) {
         alert('Microphone access denied or not supported.');
-        return;
     }
-
-    if (recognizing) {
-        recognition.stop(); // Manually stop recognition
-        recognizing = false;
-        document.getElementById('micButton').textContent = 'Start Listening';
-        listeningAnimation.style.display = 'none'; // Hide animation
-    } else {
-        recognition.start();
-        recognizing = true;
-        document.getElementById('micButton').textContent = 'Stop Listening';
-        listeningAnimation.style.display = 'block'; // Show animation
-    }
-
-    recognition.onend = () => {
-        recognizing = false;
-        document.getElementById('micButton').textContent = 'Start Listening';
-        listeningAnimation.style.display = 'none';
-    };
-
-    recognition.onresult = (event) => {
-        // Process recognition results here
-    };
 }
+
+// Helper function to convert Blob to Base64
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+    });
+}
+
+// Function to send the recorded audio to Google Cloud Speech-to-Text API
+async function sendAudioToGoogle(audioBase64) {
+    const apiKey = 'YOUR_GOOGLE_CLOUD_API_KEY';  // Replace with your actual API key
+    const url = `https://speech.googleapis.com/v1/speech:recognize?key=${apiKey}`;
+
+    const requestPayload = {
+        config: {
+            encoding: 'LINEAR16',  // Specify audio encoding
+            sampleRateHertz: 16000,  // Sample rate of your audio data
+            languageCode: 'en-US',  // Language code for transcription
+        },
+        audio: {
+            content: audioBase64  // Base64-encoded audio
+        }
+    };
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestPayload)
+    });
+
+    if (!response.ok) {
+        throw new Error('Error in Google Cloud Speech-to-Text API request');
+    }
+
+    const data = await response.json();
+    return data.results?.[0]?.alternatives?.[0]?.transcript || 'No transcription available';
+}
+
 
 
 
